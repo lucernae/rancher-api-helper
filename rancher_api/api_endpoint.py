@@ -102,13 +102,30 @@ class StackResource(RancherResource):
     def templates(self):
         return self.resource['templates']
 
+    def exportConfig(self):
+        request_contexts = {
+            'params': {
+                'action': 'exportconfig'
+            },
+            'headers': {
+                'content-type': 'application/json'
+            }
+        }
+        request_contexts.update(self.api.request_contexts)
+        response = self.api.endpoint.stacks(self.id).POST(**request_contexts)
+        return response.json()
+
     def upgrade(self):
+        # Get current compose config
+
+        exportconfig_ret = self.exportConfig()
+
         data = {
             'answers': self.answers,
-            'dockerCompose': self.dockerCompose,
+            'dockerCompose': exportconfig_ret['dockerComposeConfig'],
             'environment': self.environment,
             'externalId': self.externalId,
-            'rancherCompose': self.rancherCompose,
+            'rancherCompose': exportconfig_ret['rancherComposeConfig'],
             'templates': self.templates
         }
         excluded_keys = []
