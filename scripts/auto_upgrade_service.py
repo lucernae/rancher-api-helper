@@ -13,7 +13,11 @@ if __name__ == '__main__':
         rancher_base_url = os.environ.get('RANCHER_BASE_URL')
         access_key = os.environ.get('RANCHER_ACCESS_KEY')
         secret_key = os.environ.get('RANCHER_SECRET_KEY')
-        api = APIEndpoint(rancher_base_url, access_key, secret_key)
+        project_id = os.environ.get('RANCHER_PROJECT_ID')
+        api = APIEndpoint(
+            rancher_base_url, access_key, secret_key,
+            use_account_api=bool(project_id),
+            project_id=project_id)
 
         service_id = os.environ.get('RANCHER_TARGET_SERVICE_ID')
         print 'Service ID: {0}'.format(service_id)

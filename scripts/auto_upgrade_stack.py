@@ -13,13 +13,20 @@ if __name__ == '__main__':
         rancher_base_url = os.environ.get('RANCHER_BASE_URL')
         access_key = os.environ.get('RANCHER_ACCESS_KEY')
         secret_key = os.environ.get('RANCHER_SECRET_KEY')
-        api = APIEndpoint(rancher_base_url, access_key, secret_key)
+        project_id = os.environ.get('RANCHER_PROJECT_ID')
+        api = APIEndpoint(
+            rancher_base_url, access_key, secret_key,
+            use_account_api=bool(project_id),
+            project_id=project_id)
 
         stack_id = os.environ.get('RANCHER_TARGET_STACK_ID')
 
         target_image_id = None
         if 'RANCHER_TARGET_IMAGE_ID' in os.environ:
             target_image_id = os.environ.get('RANCHER_TARGET_IMAGE_ID')
+
+        if project_id:
+            print 'Project ID: {0}'.format(project_id)
 
         print 'Stack ID: {0}'.format(stack_id)
         stack = api.stacks(stack_id)
