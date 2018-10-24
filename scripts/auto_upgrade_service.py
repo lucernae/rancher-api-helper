@@ -24,6 +24,9 @@ if __name__ == '__main__':
         service = api.services(service_id)
 
         # Use the new image version
+        # Replace image being used in service RANCHER_TARGET_SERVICE_ID
+        # into RANCHER_NEW_IMAGE_UUID
+        # Useful for upgrading new releases.
         new_image_uuid = os.environ.get('RANCHER_NEW_IMAGE_UUID')
         if new_image_uuid:
             service.resource['upgrade']['inServiceStrategy'][
