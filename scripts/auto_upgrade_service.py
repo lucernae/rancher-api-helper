@@ -22,6 +22,13 @@ if __name__ == '__main__':
         service_id = os.environ.get('RANCHER_TARGET_SERVICE_ID')
         print 'Service ID: {0}'.format(service_id)
         service = api.services(service_id)
+
+        # Use the new image version
+        new_image_uuid = os.environ.get('RANCHER_NEW_IMAGE_UUID')
+        if new_image_uuid:
+            service.resource['upgrade']['inServiceStrategy'][
+                'launchConfig']['imageUuid'] = new_image_uuid
+
         service.upgrade()
         print service.state
         print 'Waiting upgrade process'
