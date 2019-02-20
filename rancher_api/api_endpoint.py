@@ -1,5 +1,7 @@
 # coding=utf-8
+import ast
 import json
+import re
 import threading
 
 import time
@@ -197,6 +199,38 @@ class StackResource(RancherResource):
             service.wait_valid_state()
             service.finish_upgrade()
 
+    def upgrade_service_with_pattern(self, replace_what, replace_to):
+        """Auto upgrade all services that matches pattern `replace what`.
+
+        All matching services will be changed into `replace_to`
+
+        :param replace_what: Regex pattern of image to replace
+        :param replace_to: Image to replace
+        """
+        # We expect a raw literal string from replace_what, in case of regex
+        try:
+            pattern_string = ast.literal_eval(replace_what)
+        except:
+            pattern_string = replace_what
+        pattern = re.compile(pattern_string)
+
+        # Get key value pair of services and its image name in launch config
+        image_used = {}
+        for s_id in self.serviceIds:
+            service = self.api.services(s_id)
+            image_used[s_id] = service
+
+            if pattern.search(service.imageUuid):
+                launch_config = {
+                    'imageUuid': replace_to
+                }
+                service.upgrade(launch_config=launch_config)
+
+        # Finishing upgrade services
+        for s_id, service in image_used.iteritems():
+            service.wait_valid_state()
+            service.finish_upgrade()
+
 
 class ServiceResource(RancherResource):
 
@@ -211,12 +245,20 @@ class ServiceResource(RancherResource):
     def imageUuid(self):
         return self.launchConfig['imageUuid']
 
-    def upgrade(self):
+    def upgrade(self, launch_config=None):
         # Get current compose config
 
-        data = {
-            'inServiceStrategy': self.resource['upgrade']['inServiceStrategy']
-        }
+        try:
+            data = {
+                'inServiceStrategy': self.resource.get('upgrade', {}).get(
+                    'inServiceStrategy', {})
+            }
+        except AttributeError:
+            data = {
+                'inServiceStrategy': {
+                    'launchConfig': self.resource['launchConfig']
+                }
+            }
         excluded_keys = []
         for key, value in data.iteritems():
             if not value:
@@ -224,6 +266,14 @@ class ServiceResource(RancherResource):
 
         for k in excluded_keys:
             data.pop(k)
+
+        # Change launch config
+        launch_config_data = data['inServiceStrategy'].get('launchConfig', {})
+
+        for k, v in launch_config.iteritems():
+            launch_config_data[k] = v
+        data['inServiceStrategy']['launchConfig'] = launch_config_data
+
         request_contexts = {
             'params': {
                 'action': 'upgrade'
