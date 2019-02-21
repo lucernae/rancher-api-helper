@@ -270,8 +270,12 @@ class ServiceResource(RancherResource):
         # Change launch config
         launch_config_data = data['inServiceStrategy'].get('launchConfig', {})
 
+        if not launch_config:
+            launch_config = {}
+
         for k, v in launch_config.iteritems():
             launch_config_data[k] = v
+
         data['inServiceStrategy']['launchConfig'] = launch_config_data
 
         request_contexts = {
