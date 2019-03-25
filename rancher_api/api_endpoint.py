@@ -2,10 +2,11 @@
 import ast
 import json
 import re
-import threading
-
 import time
+from encodings.base64_codec import base64_decode
+
 from hammock import Hammock
+from websocket import WebSocketApp
 
 
 class APIEndpoint(object):
@@ -41,14 +42,86 @@ class APIEndpoint(object):
         }
 
     def stacks(self, stack_id):
+        """
+        :param stack_id:
+        :return:
+        :rtype: StackResource
+        """
         response = self.endpoint.stacks(stack_id).GET(**self.request_contexts)
         obj = response.json()
         return StackResource(self, obj)
 
     def services(self, service_id):
+        """
+        :param service_id:
+        :return:
+        :rtype: ServiceResource
+        """
         response = self.endpoint.services(service_id).GET(**self.request_contexts)
         obj = response.json()
         return ServiceResource(self, obj)
+
+    def containers(self, instance_id):
+        """
+        :param instance_id:
+        :return:
+        :rtype: ContainerResource
+        """
+        response = self.endpoint.containers(instance_id).GET(**self.request_contexts)
+        obj = response.json()
+        return ContainerResource(self, obj)
+
+    def websocket(self, host_access, **kwargs):
+        """
+        :param host_access:
+        :type host_access: HostAccess
+
+        :return:
+        """
+        ws = BaseRancherWSApp(host_access=host_access)
+        return ws
+
+
+class BaseRancherWSApp(WebSocketApp):
+
+    def __init__(self, host_access, **kwargs):
+        """
+        :param host_access:
+        :type host_access: HostAccess
+        :param kwargs:
+        """
+        url = '{url}?token={token}'.format(
+            url=host_access.url, token=host_access.token)
+        handlers = ['message', 'open', 'close', 'data', 'error']
+
+        # set default handlers
+        for h in handlers:
+            handler_name = 'on_{}'.format(h)
+            if 'on_{}'.format(h) not in kwargs:
+                kwargs.update({
+                    handler_name: getattr(self, handler_name)
+                })
+
+        super(BaseRancherWSApp, self).__init__(url=url, **kwargs)
+
+
+    def on_message(ws, message):
+        # Rancher message was encoded in utf-8 base64
+        print base64_decode(message)[0]
+
+    def on_close(ws):
+        print 'WS Closed'
+
+    def on_open(ws):
+        print 'WS Opened'
+
+    def on_data(ws, **kwargs):
+        print 'Data'
+        print kwargs
+
+    def on_error(ws, error):
+        print 'Error'
+        print error
 
 
 class RancherResource(object):
@@ -59,6 +132,13 @@ class RancherResource(object):
     STATE_FINISHING_UPGRADE = 'finishing-upgreade'
 
     def __init__(self, api, resource):
+        """a
+        :param api:
+        :type api: APIEndpoint
+
+        :param resource:
+        :type resource: dict
+        """
         super(RancherResource, self).__init__()
         self.api = api
         self.resource = resource
@@ -74,6 +154,20 @@ class RancherResource(object):
     @property
     def state(self):
         return self.resource['state']
+
+
+class HostAccess(RancherResource):
+
+    def __init__(self, api, resource):
+        super(HostAccess, self).__init__(api, resource)
+
+    @property
+    def url(self):
+        return self.resource['url']
+
+    @property
+    def token(self):
+        return self.resource['token']
 
 
 class StackResource(RancherResource):
@@ -112,6 +206,11 @@ class StackResource(RancherResource):
     @property
     def serviceIds(self):
         return self.resource['serviceIds']
+
+    @property
+    def services(self):
+        for service_id in self.serviceIds:
+            yield self.api.services(service_id)
 
     def exportConfig(self):
         request_contexts = {
@@ -245,6 +344,19 @@ class ServiceResource(RancherResource):
     def imageUuid(self):
         return self.launchConfig['imageUuid']
 
+    @property
+    def instanceIds(self):
+        return self.resource['instanceIds']
+
+    @property
+    def instances(self):
+        """
+        :return:
+        :rtype: list(ContainerResource)
+        """
+        for instance_id in self.instanceIds:
+            yield self.api.containers(instance_id)
+
     def upgrade(self, launch_config=None):
         # Get current compose config
 
@@ -312,3 +424,82 @@ class ServiceResource(RancherResource):
                 not self.state == self.STATE_ACTIVE):
             time.sleep(20)
             self.refresh()
+
+
+class ContainerResource(RancherResource):
+
+    def __init__(self, api, resource):
+        super(ContainerResource, self).__init__(api, resource)
+
+    @property
+    def name(self):
+        return self.resource['name']
+
+    @property
+    def serviceIds(self):
+        return self.resource['serviceIds']
+
+    def restart(self):
+        request_contexts = {
+            'params': {
+                'action': 'restart'
+            }
+        }
+        request_contexts.update(self.api.request_contexts)
+        response = self.api.endpoint.containers(self.id).POST(
+            **request_contexts)
+        self.resource = response.json()
+
+    def start(self):
+        request_contexts = {
+            'params': {
+                'action': 'start'
+            }
+        }
+        request_contexts.update(self.api.request_contexts)
+        response = self.api.endpoint.containers(self.id).POST(
+            **request_contexts)
+        self.resource = response.json()
+
+    def stop(self):
+        request_contexts = {
+            'params': {
+                'action': 'stop'
+            }
+        }
+        request_contexts.update(self.api.request_contexts)
+        response = self.api.endpoint.containers(self.id).POST(
+            **request_contexts)
+        self.resource = response.json()
+
+    def execute(self, command, attach_stdin=True, attach_stdout=True, tty=True):
+        if not isinstance(command, list):
+            command = command.split(' ')
+        data = {
+            'attachStdin': attach_stdin,
+            'attachStdout': attach_stdout,
+            'tty': tty,
+            'command': command
+        }
+        # data = {
+        #     'follow': True,
+        #     'lines': 100
+        # }
+        request_contexts = {
+            'params': {
+                'action': 'execute'
+                # 'action': 'logs'
+            },
+            'headers': {
+                'content-type': 'application/json'
+            },
+            'data': json.dumps(data)
+        }
+        request_contexts.update(self.api.request_contexts)
+        response = self.api.endpoint.containers(self.id).POST(
+            **request_contexts)
+        host_access = response.json()
+        host_access = HostAccess(self.api, host_access)
+
+        ws = self.api.websocket(host_access)
+        ws.run_forever()
