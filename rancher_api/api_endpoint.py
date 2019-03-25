@@ -101,13 +101,14 @@ class BaseRancherWSApp(WebSocketApp):
                 kwargs.update({
                     handler_name: getattr(self, handler_name)
                 })
-
         super(BaseRancherWSApp, self).__init__(url=url, **kwargs)
-
 
     def on_message(ws, message):
         # Rancher message was encoded in utf-8 base64
-        print base64_decode(message)[0]
+        decoded_message = base64_decode(message)
+        if decoded_message:
+            decoded_message = decoded_message[0].strip()
+            print decoded_message
 
     def on_close(ws):
         print 'WS Closed'
