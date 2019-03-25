@@ -107,8 +107,8 @@ class BaseRancherWSApp(WebSocketApp):
         # Rancher message was encoded in utf-8 base64
         decoded_message = base64_decode(message)
         if decoded_message:
-            decoded_message = decoded_message[0].strip()
-            print decoded_message
+            decoded_message = decoded_message[0]
+            print decoded_message,
 
     def on_close(ws):
         print 'WS Closed'
